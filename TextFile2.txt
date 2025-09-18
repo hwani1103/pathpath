@@ -1,0 +1,16 @@
+bool CanReachGoalAfterThisSelection(Vector2Int targetPos)
+    {
+        int maxSelections = GameManager.Instance.GetMaxSelections();
+        int usedAfterThis = currentPath.Count + 1; // 이번 선택 포함
+        int remainingAfterThis = maxSelections + 1 - usedAfterThis;
+
+        // 마지막 선택이면 Goal 직선 체크 필요
+        if (remainingAfterThis <= 1)
+        {
+            Vector2Int ownGoalPos = GetOwnGoalPosition();
+            Vector2Int diff = ownGoalPos - targetPos;
+            return (diff.x == 0) || (diff.y == 0); // 직선인지 확인
+        }
+
+        return true; // 마지막 선택이 아니면 OK
+    }
