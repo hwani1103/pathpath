@@ -88,7 +88,10 @@ public class PlayerManager : MonoBehaviour
     {
         return playersByID.ContainsKey(playerID) ? playersByID[playerID] : null;
     }
-
+    public List<GameObject> GetAllGoals()
+    {
+        return new List<GameObject>(allGoals);
+    }
     public List<Player> GetAllPlayers()
     {
         return new List<Player>(allPlayers);

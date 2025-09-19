@@ -13,9 +13,13 @@ public class GameManager : MonoBehaviour
 
     [Header("Collision Detection")]
     private bool isSimulationRunning = false;
-    private Dictionary<Vector2Int, List<Player>> positionTracker = new Dictionary<Vector2Int, List<Player>>();
 
+    private PlayerSelectionIndicator cachedPlayerIndicator;
+    private GoalSelectionIndicator cachedGoalIndicator;
+    private RemainingSelectionsDisplay cachedSelectionsDisplay;
 
+    // 재사용할 딕셔너리 (GC 방지)
+    private Dictionary<Vector2Int, List<Player>> reusablePositionTracker = new Dictionary<Vector2Int, List<Player>>();
     // 싱글톤 패턴
     private static GameManager instance;
     public static GameManager Instance { get { return instance; } }
@@ -35,13 +39,6 @@ public class GameManager : MonoBehaviour
             Destroy(gameObject);
         }
     }
-    void Update()
-    {
-        if (isSimulationRunning)
-        {
-            CheckForCollisions();
-        }
-    }
 
     void InitializeGame()
     {
@@ -58,13 +55,26 @@ public class GameManager : MonoBehaviour
         if (pathInput != null && pathInput.AreAllPlayersComplete())
         {
             isSimulationRunning = true;
-            positionTracker.Clear();
+            reusablePositionTracker.Clear(); // positionTracker → reusablePositionTracker
 
+            ClearAllSelectionUI();
             pathInput.ExecuteAllPaths();
-
-            // 충돌 감지 시작
             StartCoroutine(CollisionDetectionCoroutine());
         }
+    }
+    void ClearAllSelectionUI()
+    {
+        // 첫 실행 시에만 캐시
+        if (cachedPlayerIndicator == null)
+            cachedPlayerIndicator = FindFirstObjectByType<PlayerSelectionIndicator>();
+        if (cachedGoalIndicator == null)
+            cachedGoalIndicator = FindFirstObjectByType<GoalSelectionIndicator>();
+        if (cachedSelectionsDisplay == null)
+            cachedSelectionsDisplay = FindFirstObjectByType<RemainingSelectionsDisplay>();
+
+        cachedPlayerIndicator?.ClearSelection();
+        cachedGoalIndicator?.ClearSelection();
+        cachedSelectionsDisplay?.ClearDisplay();
     }
 
     // 레벨별 선택 수 반환
@@ -94,7 +104,12 @@ public class GameManager : MonoBehaviour
 
     void CheckForCollisions()
     {
-        positionTracker.Clear();
+        // 기존 데이터만 클리어 (딕셔너리 재생성 안함)
+        foreach (var list in reusablePositionTracker.Values)
+        {
+            list.Clear();
+        }
+        reusablePositionTracker.Clear();
 
         List<Player> allPlayers = PlayerManager.Instance.GetAllPlayers();
 
@@ -102,14 +117,14 @@ public class GameManager : MonoBehaviour
         {
             Vector2Int gridPos = player.GetGridPosition();
 
-            if (!positionTracker.ContainsKey(gridPos))
+            if (!reusablePositionTracker.ContainsKey(gridPos))
             {
-                positionTracker[gridPos] = new List<Player>();
+                reusablePositionTracker[gridPos] = new List<Player>();
             }
-            positionTracker[gridPos].Add(player);
+            reusablePositionTracker[gridPos].Add(player);
         }
 
-        foreach (var kvp in positionTracker)
+        foreach (var kvp in reusablePositionTracker)
         {
             if (kvp.Value.Count > 1)
             {
@@ -155,6 +170,7 @@ public class GameManager : MonoBehaviour
     {
         while (isSimulationRunning)
         {
+            CheckForCollisions(); // 여기서 충돌 체크
             // 모든 플레이어가 이동을 완료했는지 확인
             bool allPlayersFinished = true;
             List<Player> allPlayers = PlayerManager.Instance.GetAllPlayers();
