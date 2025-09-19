@@ -17,13 +17,7 @@ public class LevelManager : MonoBehaviour
     public Tilemap mainTilemap;
     public TilemapRenderer tilemapRenderer;
 
-    [Header("Player Prefab")]
-    public GameObject playerPrefab;
-    public GameObject goalPrefab;
-
     private Dictionary<TileType, TileBase> tileAssets = new Dictionary<TileType, TileBase>();
-    private List<Player> spawnedPlayers = new List<Player>();
-    private List<GameObject> spawnedGoals = new List<GameObject>();
 
     // 싱글톤 패턴
     private static LevelManager instance;
@@ -40,7 +34,7 @@ public class LevelManager : MonoBehaviour
             Destroy(gameObject);
         }
     }
-    
+
     // 나중에 Level 디자인할 때, 우클릭으로 Grid좌표확인하면서 Player랑 Goal위치 지정하게하는 메서드
     //void Update()
     //{
@@ -112,19 +106,15 @@ public class LevelManager : MonoBehaviour
             mainTilemap.SetTilesBlock(mainTilemap.cellBounds, new TileBase[mainTilemap.cellBounds.size.x * mainTilemap.cellBounds.size.y * mainTilemap.cellBounds.size.z]);
         }
 
-        // 기존 플레이어들 제거
-        foreach (var player in spawnedPlayers)
+        // PathInput LineRenderer 정리
+        PathInput pathInput = FindFirstObjectByType<PathInput>();
+        if (pathInput != null)
         {
-            if (player != null) DestroyImmediate(player.gameObject);
+            pathInput.ClearAllLineRenderers();
         }
-        spawnedPlayers.Clear();
 
-        // 기존 목표들 제거
-        foreach (var goal in spawnedGoals)
-        {
-            if (goal != null) DestroyImmediate(goal);
-        }
-        spawnedGoals.Clear();
+        // PlayerManager로 플레이어/목표 정리 (기존 코드 교체)
+        PlayerManager.Instance.ClearAllPlayers();
     }
 
     void UpdateGridSettings()
@@ -157,32 +147,7 @@ public class LevelManager : MonoBehaviour
     {
         foreach (var playerData in currentLevelData.players)
         {
-            // 플레이어 스폰
-            Vector3 playerWorldPos = GridManager.Instance.GridToWorld(playerData.startPosition);
-            GameObject playerObj = Instantiate(playerPrefab, playerWorldPos, Quaternion.identity);
-
-            Player player = playerObj.GetComponent<Player>();
-            if (player != null)
-            {
-                player.playerID = playerData.playerID;
-                player.playerColor = playerData.playerColor;
-                spawnedPlayers.Add(player);
-            }
-
-            // 목표 스폰
-            Vector3 goalWorldPos = GridManager.Instance.GridToWorld(playerData.goalPosition);
-            GameObject goalObj = Instantiate(goalPrefab, goalWorldPos, Quaternion.identity);
-
-            // 목표 색상 설정
-            SpriteRenderer goalRenderer = goalObj.GetComponent<SpriteRenderer>();
-            if (goalRenderer != null)
-            {
-                Color goalColor = playerData.playerColor;
-                goalColor.a = 0.5f; // 반투명
-                goalRenderer.color = goalColor;
-            }
-
-            spawnedGoals.Add(goalObj);
+            PlayerManager.Instance.SpawnPlayer(playerData);
         }
     }
 
@@ -201,7 +166,6 @@ public class LevelManager : MonoBehaviour
         return currentLevelData.IsWalkableTile(gridPos);
     }
 
-    // Tilemap을 스캔해서 LevelData 생성
     public LevelData GenerateLevelDataFromTilemap(string levelName = "Generated Level")
     {
         if (mainTilemap == null)
@@ -209,31 +173,25 @@ public class LevelManager : MonoBehaviour
             Debug.LogError("Main Tilemap is not assigned!");
             return null;
         }
-
         List<TileMapData> tileDataList = new List<TileMapData>();
-
         // Tilemap 스캔
         BoundsInt bounds = mainTilemap.cellBounds;
-
         for (int x = bounds.xMin; x < bounds.xMax; x++)
         {
             for (int y = bounds.yMin; y < bounds.yMax; y++)
             {
                 Vector3Int cellPos = new Vector3Int(x, y, 0);
                 TileBase tile = mainTilemap.GetTile(cellPos);
-
                 if (tile != null)
                 {
                     TileMapData tileData = new TileMapData();
                     tileData.position = new Vector2Int(x, y);
-                    tileData.tileType = TileType.Walkable; // 기본값
+                    tileData.tileType = TileType.Walkable; // 단순화
                     tileData.playerID = -1;
-
                     tileDataList.Add(tileData);
                 }
             }
         }
-
         Debug.Log($"Generated {tileDataList.Count} tiles from Tilemap");
         return CreateLevelDataAsset(levelName, tileDataList);
     }

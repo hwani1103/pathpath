@@ -19,14 +19,19 @@ public class PathInput : MonoBehaviour
     private Dictionary<Player, List<Vector2Int>> playerPaths = new Dictionary<Player, List<Vector2Int>>();
     private Dictionary<Player, LineRenderer> playerPathRenderers = new Dictionary<Player, LineRenderer>();
     private List<Vector2Int> currentPath = new List<Vector2Int>();
+    private List<Player> cachedPlayers = new List<Player>();
+
+    private Vector3 lastInputPosition;
+    private bool isDragging = false;
 
     void Start()
     {
         mainCamera = Camera.main;
         CreateHoverLineRenderer();
+        CacheAllPlayers();
         InitializePlayerPaths();
     }
-
+    
     void CreateHoverLineRenderer()
     {
         GameObject hoverObj = new GameObject("HoverPathLine");
@@ -49,9 +54,8 @@ public class PathInput : MonoBehaviour
 
     void InitializePlayerPaths()
     {
-        Player[] allPlayers = FindObjectsByType<Player>(FindObjectsSortMode.None);
-
-        foreach (Player player in allPlayers)
+        // FindObjectsByType 대신 캐시된 플레이어 사용
+        foreach (Player player in cachedPlayers)
         {
             playerPaths[player] = new List<Vector2Int>();
 
@@ -80,42 +84,132 @@ public class PathInput : MonoBehaviour
     void Update()
     {
         HandleInput();
-        HandleHover();
+
+        // 입력 위치가 변경되었을 때만 호버링/드래그 처리
+        Vector3 currentInputPosition = GetCurrentInputPosition();
+        if (currentInputPosition != lastInputPosition)
+        {
+            if (isDragging)
+            {
+                HandleDrag();
+            }
+            else
+            {
+                HandleHover();
+            }
+            lastInputPosition = currentInputPosition;
+        }
     }
 
+    public void ClearAllLineRenderers()
+    {
+        // 플레이어 경로 LineRenderer들 정리
+        foreach (var pathRenderer in playerPathRenderers.Values)
+        {
+            if (pathRenderer != null && pathRenderer.gameObject != null)
+            {
+                DestroyImmediate(pathRenderer.gameObject);
+            }
+        }
+
+        playerPathRenderers.Clear();
+        playerPaths.Clear();
+
+        // 호버 LineRenderer 정리
+        if (hoverLineRenderer != null)
+        {
+            hoverLineRenderer.positionCount = 0;
+        }
+
+        selectedPlayer = null;
+        currentPath.Clear();
+    }
+
+    Vector3 GetCurrentInputPosition()
+    {
+        if (Input.touchCount > 0)
+        {
+            return Input.GetTouch(0).position;
+        }
+        else
+        {
+            return Input.mousePosition;
+        }
+    }
     void HandleInput()
     {
-        if (Input.GetMouseButtonDown(0))
+        // 터치 입력 처리
+        if (Input.touchCount > 0)
         {
-            Vector3 worldPos = GetWorldPosition();
+            Touch touch = Input.GetTouch(0);
 
-            // 1. 플레이어 선택 체크
-            Collider2D hitCollider = Physics2D.OverlapPoint(worldPos, playerLayerMask);
-            if (hitCollider != null)
+            if (touch.phase == TouchPhase.Began)
             {
-                Player player = hitCollider.GetComponent<Player>();
-                if (player != null)
-                {
-                    SelectPlayer(player);
-                    return;
-                }
+                HandleTouchBegan();
             }
-
-            // 2. 경로 추가
-            if (selectedPlayer != null)
+            else if (touch.phase == TouchPhase.Moved)
             {
-                Vector2Int gridPos = GridManager.Instance.WorldToGrid(worldPos);
-                if (IsValidPathPoint(gridPos))
-                {
-                    AddToPath(gridPos);
-                }
+                isDragging = true;
+            }
+            else if (touch.phase == TouchPhase.Ended)
+            {
+                HandleTouchEnded();
+                isDragging = false;
+            }
+        }
+        // 에디터 테스트용 마우스 입력
+        else
+        {
+            if (Input.GetMouseButtonDown(0))
+            {
+                HandleTouchBegan();
+            }
+            if (Input.GetMouseButton(0))
+            {
+                isDragging = true;
+            }
+            if (Input.GetMouseButtonUp(0))
+            {
+                HandleTouchEnded();
+                isDragging = false;
             }
         }
 
         // 스페이스바로 시뮬레이션 시작
         if (Input.GetKeyDown(KeyCode.Space))
         {
-            StartSimulation();
+            GameManager.Instance.StartSimulation(); // 변경
+        }
+    }
+
+    void HandleTouchBegan()
+    {
+        Vector3 worldPos = GetWorldPosition();
+
+        // 1. 플레이어 선택 체크
+        Collider2D hitCollider = Physics2D.OverlapPoint(worldPos, playerLayerMask);
+        if (hitCollider != null)
+        {
+            Player player = hitCollider.GetComponent<Player>();
+            if (player != null)
+            {
+                SelectPlayer(player);
+                return;
+            }
+        }
+    }
+
+    void HandleTouchEnded()
+    {
+        // 2. 경로 추가
+        if (selectedPlayer != null)
+        {
+            Vector3 worldPos = GetWorldPosition();
+            Vector2Int gridPos = GridManager.Instance.WorldToGrid(worldPos);
+            if (IsValidPathPoint(gridPos))
+            {
+                AddToPath(gridPos);
+            }
         }
     }
 
@@ -153,10 +247,57 @@ public class PathInput : MonoBehaviour
             hoverLineRenderer.positionCount = 0;
         }
     }
+    void HandleDrag()
+    {
+        if (selectedPlayer == null || IsAnyPlayerMoving())
+        {
+            hoverLineRenderer.positionCount = 0;
+            return;
+        }
+
+        // Goal을 선택한 후에는 드래그 비활성화
+        if (IsPathCompleteToGoal())
+        {
+            hoverLineRenderer.positionCount = 0;
+            return;
+        }
+
+        Vector3 inputWorldPos = GetWorldPosition();
+        Vector2Int inputGridPos = GridManager.Instance.WorldToGrid(inputWorldPos);
+
+        if (!HasTileAtPosition(inputGridPos) || !CanAddMorePoints())
+        {
+            hoverLineRenderer.positionCount = 0;
+            return;
+        }
+
+        Vector2Int startPos = GetLastPathPoint();
+        if (IsStraightLine(startPos, inputGridPos))
+        {
+            ShowHoverPath(startPos, inputGridPos, GetHoverColor(inputGridPos));
+        }
+        else
+        {
+            hoverLineRenderer.positionCount = 0;
+        }
+    }
+
 
     Vector3 GetWorldPosition()
     {
-        Vector3 screenPos = Input.mousePosition;
+        Vector3 screenPos;
+
+        if (Input.touchCount > 0)
+        {
+            // 모바일: 터치 위치 사용
+            screenPos = Input.GetTouch(0).position;
+        }
+        else
+        {
+            // 에디터: 마우스 위치 사용 (테스트용)
+            screenPos = Input.mousePosition;
+        }
+
         screenPos.z = 10f;
         return mainCamera.ScreenToWorldPoint(screenPos);
     }
@@ -185,6 +326,9 @@ public class PathInput : MonoBehaviour
     {
         // 타일이 존재하는지 확인
         if (!HasTileAtPosition(gridPos)) return false;
+
+        Vector2Int lastPos = GetLastPathPoint();
+        if (!IsStraightLine(lastPos, gridPos)) return false;
 
         // 다른 플레이어의 Goal 위치인지 확인
         if (IsOtherPlayerGoal(gridPos)) return false;
@@ -296,10 +440,10 @@ public class PathInput : MonoBehaviour
         }
         return false;
     }
-
     bool CanAddMorePoints()
     {
-        int maxSelections = GameManager.Instance.GetMaxSelections();
+        PlayerSpawnData playerData = PlayerManager.Instance.GetPlayerData(selectedPlayer.playerID);
+        int maxSelections = playerData != null ? playerData.maxSelections : GameManager.Instance.GetMaxSelections();
         return currentPath.Count < maxSelections + 1;
     }
 
@@ -312,37 +456,14 @@ public class PathInput : MonoBehaviour
 
     bool IsAnyPlayerMoving()
     {
-        Player[] allPlayers = FindObjectsByType<Player>(FindObjectsSortMode.None);
-        foreach (Player player in allPlayers)
+        foreach (Player player in cachedPlayers)
         {
-            if (player.IsMoving()) return true;
+            if (player != null && player.IsMoving()) return true;
         }
         return false;
     }
 
-    void StartSimulation()
-    {
-        // 모든 플레이어가 Goal에 도달했는지 확인
-        if (!AreAllPlayersComplete())
-        {
-            return; // 완성되지 않았으면 시뮬레이션 시작하지 않음
-        }
-
-        foreach (var kvp in playerPaths)
-        {
-            Player player = kvp.Key;
-            List<Vector2Int> fullPath = kvp.Value;
-
-            if (fullPath.Count > 1)
-            {
-                List<Vector2Int> playerPath = new List<Vector2Int>(fullPath);
-                playerPath.RemoveAt(0); // 시작점 제거
-
-                player.SetPath(playerPath);
-                player.StartMoving();
-            }
-        }
-    }
+    
     bool IsOtherPlayerStart(Vector2Int gridPos)
     {
         if (LevelManager.Instance?.currentLevelData?.players == null) return false;
@@ -360,7 +481,8 @@ public class PathInput : MonoBehaviour
 
     bool CanReachGoalAfterThisSelection(Vector2Int targetPos)
     {
-        int maxSelections = GameManager.Instance.GetMaxSelections();
+        PlayerSpawnData playerData = PlayerManager.Instance.GetPlayerData(selectedPlayer.playerID);
+        int maxSelections = playerData != null ? playerData.maxSelections : GameManager.Instance.GetMaxSelections();
         int usedAfterThis = currentPath.Count + 1; // 이번 선택 포함
         int remainingAfterThis = maxSelections + 1 - usedAfterThis;
 
@@ -414,8 +536,24 @@ public class PathInput : MonoBehaviour
         }
         return false;
     }
+    public void ExecuteAllPaths()
+    {
+        foreach (var kvp in playerPaths)
+        {
+            Player player = kvp.Key;
+            List<Vector2Int> fullPath = kvp.Value;
 
-    bool AreAllPlayersComplete()
+            if (fullPath.Count > 1)
+            {
+                List<Vector2Int> playerPath = new List<Vector2Int>(fullPath);
+                playerPath.RemoveAt(0); // 시작점 제거
+
+                player.SetPath(playerPath);
+                player.StartMoving();
+            }
+        }
+    }
+    public bool AreAllPlayersComplete()
     {
         if (LevelManager.Instance?.currentLevelData?.players == null) return false;
 
@@ -464,4 +602,19 @@ public class PathInput : MonoBehaviour
         yield return new WaitForSeconds(delay);
         pathRenderer.positionCount = 0;
     }
+    void CacheAllPlayers()
+    {
+        cachedPlayers.Clear();
+        Player[] allPlayers = FindObjectsByType<Player>(FindObjectsSortMode.None);
+        cachedPlayers.AddRange(allPlayers);
+    }
+    
+    public void AddPlayerToCache(Player player)
+    {
+        if (!cachedPlayers.Contains(player))
+        {
+            cachedPlayers.Add(player);
+        }
+    }
+
 }

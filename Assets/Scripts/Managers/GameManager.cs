@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 public class GameManager : MonoBehaviour
@@ -8,6 +9,7 @@ public class GameManager : MonoBehaviour
 
     [Header("Managers")]
     [SerializeField] private GridManager gridManager;
+    private PathInput pathInput;
 
     // 싱글톤 패턴
     private static GameManager instance;
@@ -28,12 +30,22 @@ public class GameManager : MonoBehaviour
             Destroy(gameObject);
         }
     }
-
     void InitializeGame()
     {
         // GridManager 자동 찾기
         if (gridManager == null)
             gridManager = FindFirstObjectByType<GridManager>();
+
+        // PathInput 캐시
+        if (pathInput == null)
+            pathInput = FindFirstObjectByType<PathInput>();
+    }
+    public void StartSimulation()
+    {
+        if (pathInput != null && pathInput.AreAllPlayersComplete())
+        {
+            pathInput.ExecuteAllPaths();
+        }
     }
 
     // 레벨별 선택 수 반환

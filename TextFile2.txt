@@ -1,16 +1,1103 @@
-bool CanReachGoalAfterThisSelection(Vector2Int targetPos)
+using UnityEngine;
+using UnityEngine.Tilemaps;
+using System.Collections.Generic;
+
+public class LevelManager : MonoBehaviour
+{
+    [Header("Current Level")]
+    public LevelData currentLevelData;
+
+    [Header("Tile References")]
+    public TileData walkableTileData;
+    public TileData blockedTileData;
+    public TileData startTileData;
+    public TileData goalTileData;
+
+    [Header("Tilemap References")]
+    public Tilemap mainTilemap;
+    public TilemapRenderer tilemapRenderer;
+
+    [Header("Player Prefab")]
+    public GameObject playerPrefab;
+    public GameObject goalPrefab;
+
+    private Dictionary<TileType, TileBase> tileAssets = new Dictionary<TileType, TileBase>();
+    private List<Player> spawnedPlayers = new List<Player>();
+    private List<GameObject> spawnedGoals = new List<GameObject>();
+
+    // 싱글톤 패턴
+    private static LevelManager instance;
+    public static LevelManager Instance { get { return instance; } }
+
+    void Awake()
+    {
+        if (instance == null)
+        {
+            instance = this;
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
+    }
+    
+    // 나중에 Level 디자인할 때, 우클릭으로 Grid좌표확인하면서 Player랑 Goal위치 지정하게하는 메서드
+    //void Update()
+    //{
+    //    // 우클릭으로 Grid 좌표 확인
+    //    if (Input.GetMouseButtonDown(1))
+    //    {
+    //        Vector3 mouseWorldPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+    //        mouseWorldPos.z = 0;
+    //        Vector2Int gridPos = GridManager.Instance.WorldToGrid(mouseWorldPos);
+    //        Debug.Log($"Mouse Grid Position: {gridPos}");
+    //    }
+    //}
+    void Start()
+    {
+        InitializeTileAssets();
+
+        if (currentLevelData != null)
+        {
+            LoadLevel(currentLevelData);
+        }
+    }
+
+    void InitializeTileAssets()
+    {
+        // TileData를 실제 TileAsset으로 변환하는 작업
+        // 지금은 임시로 기존 타일들 사용
+        var walkableTiles = Resources.FindObjectsOfTypeAll<TileBase>();
+
+        // 임시 구현: 첫 번째 타일을 각 타입으로 지정
+        if (walkableTiles.Length > 0)
+        {
+            tileAssets[TileType.Walkable] = walkableTiles[0];
+            tileAssets[TileType.Blocked] = walkableTiles[0];
+            tileAssets[TileType.Start] = walkableTiles[0];
+            tileAssets[TileType.Goal] = walkableTiles[0];
+        }
+    }
+
+    public void LoadLevel(LevelData levelData)
+    {
+        if (!levelData.IsValid())
+        {
+            Debug.LogError("Invalid level data!");
+            return;
+        }
+
+        currentLevelData = levelData;
+
+        // 기존 레벨 정리
+        ClearLevel();
+
+        // Grid 설정 업데이트
+        UpdateGridSettings();
+
+        // 타일맵 생성
+        GenerateTilemap();
+
+        // 플레이어 및 목표 스폰
+        SpawnPlayersAndGoals();
+
+        Debug.Log($"Level {levelData.levelID} loaded: {levelData.levelName}");
+    }
+
+    void ClearLevel()
+    {
+        // 기존 타일맵 클리어
+        if (mainTilemap != null)
+        {
+            mainTilemap.SetTilesBlock(mainTilemap.cellBounds, new TileBase[mainTilemap.cellBounds.size.x * mainTilemap.cellBounds.size.y * mainTilemap.cellBounds.size.z]);
+        }
+
+        // 기존 플레이어들 제거
+        foreach (var player in spawnedPlayers)
+        {
+            if (player != null) DestroyImmediate(player.gameObject);
+        }
+        spawnedPlayers.Clear();
+
+        // 기존 목표들 제거
+        foreach (var goal in spawnedGoals)
+        {
+            if (goal != null) DestroyImmediate(goal);
+        }
+        spawnedGoals.Clear();
+    }
+
+    void UpdateGridSettings()
+    {
+        if (GridManager.Instance != null)
+        {
+            GridManager gridManager = GridManager.Instance;
+            gridManager.gridWidth = currentLevelData.gridWidth;
+            gridManager.gridHeight = currentLevelData.gridHeight;
+            gridManager.gridCenter = currentLevelData.gridCenter;
+        }
+    }
+
+    void GenerateTilemap()
+    {
+        if (mainTilemap == null) return;
+
+        foreach (var tileData in currentLevelData.tileMap)
+        {
+            Vector3Int cellPosition = new Vector3Int(tileData.position.x, tileData.position.y, 0);
+
+            if (tileAssets.ContainsKey(tileData.tileType))
+            {
+                mainTilemap.SetTile(cellPosition, tileAssets[tileData.tileType]);
+            }
+        }
+    }
+
+    void SpawnPlayersAndGoals()
+    {
+        foreach (var playerData in currentLevelData.players)
+        {
+            // 플레이어 스폰
+            Vector3 playerWorldPos = GridManager.Instance.GridToWorld(playerData.startPosition);
+            GameObject playerObj = Instantiate(playerPrefab, playerWorldPos, Quaternion.identity);
+
+            Player player = playerObj.GetComponent<Player>();
+            if (player != null)
+            {
+                player.playerID = playerData.playerID;
+                player.playerColor = playerData.playerColor;
+                spawnedPlayers.Add(player);
+            }
+
+            // 목표 스폰
+            Vector3 goalWorldPos = GridManager.Instance.GridToWorld(playerData.goalPosition);
+            GameObject goalObj = Instantiate(goalPrefab, goalWorldPos, Quaternion.identity);
+
+            // 목표 색상 설정
+            SpriteRenderer goalRenderer = goalObj.GetComponent<SpriteRenderer>();
+            if (goalRenderer != null)
+            {
+                Color goalColor = playerData.playerColor;
+                goalColor.a = 0.5f; // 반투명
+                goalRenderer.color = goalColor;
+            }
+
+            spawnedGoals.Add(goalObj);
+        }
+    }
+
+    public PlayerSpawnData GetPlayerData(int playerID)
+    {
+        foreach (var playerData in currentLevelData.players)
+        {
+            if (playerData.playerID == playerID)
+                return playerData;
+        }
+        return null;
+    }
+
+    public bool IsValidPosition(Vector2Int gridPos)
+    {
+        return currentLevelData.IsWalkableTile(gridPos);
+    }
+
+    // Tilemap을 스캔해서 LevelData 생성
+    public LevelData GenerateLevelDataFromTilemap(string levelName = "Generated Level")
+    {
+        if (mainTilemap == null)
+        {
+            Debug.LogError("Main Tilemap is not assigned!");
+            return null;
+        }
+
+        List<TileMapData> tileDataList = new List<TileMapData>();
+
+        // Tilemap 스캔
+        BoundsInt bounds = mainTilemap.cellBounds;
+
+        for (int x = bounds.xMin; x < bounds.xMax; x++)
+        {
+            for (int y = bounds.yMin; y < bounds.yMax; y++)
+            {
+                Vector3Int cellPos = new Vector3Int(x, y, 0);
+                TileBase tile = mainTilemap.GetTile(cellPos);
+
+                if (tile != null)
+                {
+                    TileMapData tileData = new TileMapData();
+                    tileData.position = new Vector2Int(x, y);
+                    tileData.tileType = TileType.Walkable; // 기본값
+                    tileData.playerID = -1;
+
+                    tileDataList.Add(tileData);
+                }
+            }
+        }
+
+        Debug.Log($"Generated {tileDataList.Count} tiles from Tilemap");
+        return CreateLevelDataAsset(levelName, tileDataList);
+    }
+
+    // LevelData ScriptableObject 생성
+    private LevelData CreateLevelDataAsset(string levelName, List<TileMapData> tiles)
+    {
+        LevelData newLevelData = ScriptableObject.CreateInstance<LevelData>();
+
+        // GridManager 안전 확인
+        GridManager gridManager = FindFirstObjectByType<GridManager>();
+        if (gridManager == null)
+        {
+            Debug.LogError("GridManager not found!");
+            return null;
+        }
+
+        // 기본 설정
+        newLevelData.levelName = levelName;
+        newLevelData.gridWidth = gridManager.gridWidth;
+        newLevelData.gridHeight = gridManager.gridHeight;
+        newLevelData.gridCenter = gridManager.gridCenter;
+
+        // 타일 데이터 설정
+        newLevelData.tileMap = tiles.ToArray();
+
+        // 기본 플레이어 데이터 (수동으로 설정 필요)
+        newLevelData.players = new PlayerSpawnData[]
+        {
+            new PlayerSpawnData
+            {
+                playerID = 1,
+                startPosition = new Vector2Int(2, 2),
+                goalPosition = new Vector2Int(2, 8),
+                playerColor = Color.red,
+                maxSelections = 3
+            },
+            new PlayerSpawnData
+            {
+                playerID = 2,
+                startPosition = new Vector2Int(4, 2),
+                goalPosition = new Vector2Int(4, 8),
+                playerColor = Color.blue,
+                maxSelections = 3
+            }
+        };
+
+        return newLevelData;
+    }
+
+#if UNITY_EDITOR
+    [UnityEngine.ContextMenu("Generate Level Data")]
+    public void GenerateAndSaveLevelData()
+    {
+        LevelData generated = GenerateLevelDataFromTilemap("Generated_" + System.DateTime.Now.ToString("yyyyMMdd_HHmm"));
+
+        if (generated != null)
+        {
+            string path = "Assets/Data/" + generated.levelName + ".asset";
+            UnityEditor.AssetDatabase.CreateAsset(generated, path);
+            UnityEditor.AssetDatabase.SaveAssets();
+
+            Debug.Log($"Level Data saved to: {path}");
+        }
+    }
+#endif
+}using UnityEngine;
+
+[System.Serializable]
+public class PlayerSpawnData
+{
+    public int playerID;
+    public Vector2Int startPosition;
+    public Vector2Int goalPosition;
+    public Color playerColor;
+    public int maxSelections;
+}
+
+[System.Serializable]
+public class TileMapData
+{
+    public Vector2Int position;
+    public TileType tileType;
+    public int playerID = -1; // 시작점/목표점일 때만 사용 (-1은 해당 없음)
+}
+
+[CreateAssetMenu(fileName = "New Level Data", menuName = "PathPath/Level Data")]
+public class LevelData : ScriptableObject
+{
+    [Header("Level Info")]
+    public int levelID;
+    public string levelName;
+    public int difficulty = 1;
+
+    [Header("Grid Settings")]
+    public int gridWidth = 6;
+    public int gridHeight = 12;
+    public Vector3 gridCenter = new Vector3(2.5f, 5.5f, 0f);
+
+    [Header("Players")]
+    public PlayerSpawnData[] players;
+
+    [Header("Tile Map")]
+    public TileMapData[] tileMap;
+
+    [Header("Game Rules")]
+    public float timeLimit = 60f; // 계획 시간 제한
+    public bool allowDiagonalMovement = false;
+
+    // 유효성 검증
+    public bool IsValid()
+    {
+        if (players == null || players.Length == 0) return false;
+        if (tileMap == null || tileMap.Length == 0) return false;
+
+        foreach (var player in players)
+        {
+            if (player.maxSelections <= 0) return false;
+        }
+
+        return true;
+    }
+
+    // 특정 위치의 타일 타입 반환
+    public TileType GetTileTypeAt(Vector2Int position)
+    {
+        foreach (var tile in tileMap)
+        {
+            if (tile.position == position)
+                return tile.tileType;
+        }
+        return TileType.Blocked; // 기본값은 막힌 타일
+    }
+
+    // 이동 가능한 타일인지 확인
+    public bool IsWalkableTile(Vector2Int position)
+    {
+        TileType tileType = GetTileTypeAt(position);
+        return tileType == TileType.Walkable || tileType == TileType.Start || tileType == TileType.Goal;
+    }
+}using UnityEngine;
+using System.Collections.Generic;
+
+public class PathInput : MonoBehaviour
+{
+    [Header("Input Settings")]
+    public LayerMask playerLayerMask = -1;
+
+    [Header("Path Colors")]
+    public Color validPathColor = Color.yellow;
+    public Color invalidPathColor = Color.red;
+
+    // 캐싱된 컴포넌트들
+    private Camera mainCamera;
+    private Player selectedPlayer = null;
+    private LineRenderer hoverLineRenderer;
+
+    // 경로 데이터
+    private Dictionary<Player, List<Vector2Int>> playerPaths = new Dictionary<Player, List<Vector2Int>>();
+    private Dictionary<Player, LineRenderer> playerPathRenderers = new Dictionary<Player, LineRenderer>();
+    private List<Vector2Int> currentPath = new List<Vector2Int>();
+
+    void Start()
+    {
+        mainCamera = Camera.main;
+        CreateHoverLineRenderer();
+        InitializePlayerPaths();
+    }
+
+    void CreateHoverLineRenderer()
+    {
+        GameObject hoverObj = new GameObject("HoverPathLine");
+        hoverObj.transform.SetParent(transform);
+
+        hoverLineRenderer = hoverObj.AddComponent<LineRenderer>();
+
+        // Sprites-Default 재질 생성
+        Material lineMat = new Material(Shader.Find("Sprites/Default"));
+        hoverLineRenderer.material = lineMat;
+
+        hoverLineRenderer.startWidth = 0.15f;
+        hoverLineRenderer.endWidth = 0.15f;
+        hoverLineRenderer.positionCount = 0;
+        hoverLineRenderer.sortingOrder = 2;
+        hoverLineRenderer.useWorldSpace = true;
+        hoverLineRenderer.startColor = validPathColor;
+        hoverLineRenderer.endColor = validPathColor;
+    }
+
+    void InitializePlayerPaths()
+    {
+        Player[] allPlayers = FindObjectsByType<Player>(FindObjectsSortMode.None);
+
+        foreach (Player player in allPlayers)
+        {
+            playerPaths[player] = new List<Vector2Int>();
+
+            // 각 플레이어용 LineRenderer 생성
+            GameObject pathObj = new GameObject($"PathLine_Player{player.playerID}");
+            pathObj.transform.SetParent(transform);
+
+            LineRenderer pathRenderer = pathObj.AddComponent<LineRenderer>();
+
+            // Sprites-Default 재질 생성
+            Material pathMat = new Material(Shader.Find("Sprites/Default"));
+            pathRenderer.material = pathMat;
+
+            pathRenderer.startColor = player.playerColor;
+            pathRenderer.endColor = player.playerColor;
+            pathRenderer.startWidth = 0.12f;
+            pathRenderer.endWidth = 0.12f;
+            pathRenderer.positionCount = 0;
+            pathRenderer.sortingOrder = 1;
+            pathRenderer.useWorldSpace = true;
+
+            playerPathRenderers[player] = pathRenderer;
+        }
+    }
+
+    void Update()
+    {
+        HandleInput();
+        HandleHover();
+    }
+
+    void HandleInput()
+    {
+        if (Input.GetMouseButtonDown(0))
+        {
+            Vector3 worldPos = GetWorldPosition();
+
+            // 1. 플레이어 선택 체크
+            Collider2D hitCollider = Physics2D.OverlapPoint(worldPos, playerLayerMask);
+            if (hitCollider != null)
+            {
+                Player player = hitCollider.GetComponent<Player>();
+                if (player != null)
+                {
+                    SelectPlayer(player);
+                    return;
+                }
+            }
+
+            // 2. 경로 추가
+            if (selectedPlayer != null)
+            {
+                Vector2Int gridPos = GridManager.Instance.WorldToGrid(worldPos);
+                if (IsValidPathPoint(gridPos))
+                {
+                    AddToPath(gridPos);
+                }
+            }
+        }
+
+        // 스페이스바로 시뮬레이션 시작
+        if (Input.GetKeyDown(KeyCode.Space))
+        {
+            StartSimulation();
+        }
+    }
+
+    void HandleHover()
+    {
+        if (selectedPlayer == null || IsAnyPlayerMoving())
+        {
+            hoverLineRenderer.positionCount = 0;
+            return;
+        }
+
+        // Goal을 선택한 후에는 호버링 비활성화 (추가된 부분)
+        if (IsPathCompleteToGoal())
+        {
+            hoverLineRenderer.positionCount = 0;
+            return;
+        }
+
+        Vector3 mouseWorldPos = GetWorldPosition();
+        Vector2Int mouseGridPos = GridManager.Instance.WorldToGrid(mouseWorldPos);
+
+        if (!HasTileAtPosition(mouseGridPos) || !CanAddMorePoints())
+        {
+            hoverLineRenderer.positionCount = 0;
+            return;
+        }
+
+        Vector2Int startPos = GetLastPathPoint();
+        if (IsStraightLine(startPos, mouseGridPos))
+        {
+            ShowHoverPath(startPos, mouseGridPos, GetHoverColor(mouseGridPos));
+        }
+        else
+        {
+            hoverLineRenderer.positionCount = 0;
+        }
+    }
+
+    Vector3 GetWorldPosition()
+    {
+        Vector3 screenPos = Input.mousePosition;
+        screenPos.z = 10f;
+        return mainCamera.ScreenToWorldPoint(screenPos);
+    }
+
+    void SelectPlayer(Player player)
+    {
+        selectedPlayer = player;
+
+        if (playerPaths.ContainsKey(player))
+        {
+            currentPath = new List<Vector2Int>(playerPaths[player]);
+        }
+        else
+        {
+            currentPath = new List<Vector2Int>();
+            playerPaths[player] = currentPath;
+        }
+
+        // 현재 위치가 경로에 없으면 추가
+        if (currentPath.Count == 0)
+        {
+            currentPath.Add(player.GetGridPosition());
+        }
+    }
+    bool IsValidPathPoint(Vector2Int gridPos)
+    {
+        // 타일이 존재하는지 확인
+        if (!HasTileAtPosition(gridPos)) return false;
+
+        // 다른 플레이어의 Goal 위치인지 확인
+        if (IsOtherPlayerGoal(gridPos)) return false;
+
+        // 다른 플레이어의 시작지점인지 확인
+        if (IsOtherPlayerStart(gridPos)) return false;
+
+        // 선택 수 제한 확인
+        if (!CanAddMorePoints()) return false;
+
+        // 중복 방지
+        if (currentPath.Count > 0 && currentPath[currentPath.Count - 1] == gridPos) return false;
+
+        // 마지막-1 선택에서 Goal로의 직선 체크
+        if (!CanReachGoalAfterThisSelection(gridPos)) return false;
+
+        return true;
+    }
+
+    void AddToPath(Vector2Int gridPos)
+    {
+        currentPath.Add(gridPos);
+        playerPaths[selectedPlayer] = new List<Vector2Int>(currentPath);
+        UpdatePathVisualization();
+
+        // Goal에 도달했으면 완료 처리
+        if (IsPlayerOwnGoal(gridPos))
+        {
+            CompletePlayerPath();
+        }
+    }
+
+    void UpdatePathVisualization()
+    {
+        if (selectedPlayer == null || !playerPathRenderers.ContainsKey(selectedPlayer)) return;
+
+        LineRenderer pathRenderer = playerPathRenderers[selectedPlayer];
+        List<Vector2Int> path = currentPath;
+
+        if (path.Count < 2)
+        {
+            pathRenderer.positionCount = 0;
+            return;
+        }
+
+        pathRenderer.positionCount = path.Count;
+        for (int i = 0; i < path.Count; i++)
+        {
+            Vector3 worldPos = GridManager.Instance.GridToWorld(path[i]);
+            pathRenderer.SetPosition(i, worldPos);
+        }
+    }
+
+    void ShowHoverPath(Vector2Int from, Vector2Int to, Color color)
+    {
+        hoverLineRenderer.startColor = color;
+        hoverLineRenderer.endColor = color;
+        hoverLineRenderer.positionCount = 2;
+
+        Vector3 startWorldPos = GridManager.Instance.GridToWorld(from);
+        Vector3 endWorldPos = GridManager.Instance.GridToWorld(to);
+
+        hoverLineRenderer.SetPosition(0, startWorldPos);
+        hoverLineRenderer.SetPosition(1, endWorldPos);
+    }
+
+    Color GetHoverColor(Vector2Int targetPos)
+    {
+        // 다른 플레이어 Goal
+        if (IsOtherPlayerGoal(targetPos)) return invalidPathColor;
+
+        // 다른 플레이어 시작점
+        if (IsOtherPlayerStart(targetPos)) return invalidPathColor;
+
+        // 마지막-1 선택에서 Goal 도달 불가능
+        if (!CanReachGoalAfterThisSelection(targetPos)) return invalidPathColor;
+
+        return validPathColor;
+    }
+
+    Vector2Int GetLastPathPoint()
+    {
+        if (currentPath.Count > 0)
+            return currentPath[currentPath.Count - 1];
+        else
+            return selectedPlayer.GetGridPosition();
+    }
+
+    bool HasTileAtPosition(Vector2Int gridPos)
+    {
+        if (LevelManager.Instance?.mainTilemap == null) return false;
+
+        Vector3 worldPos = GridManager.Instance.GridToWorld(gridPos);
+        Vector3Int tilemapPos = LevelManager.Instance.mainTilemap.WorldToCell(worldPos);
+        return LevelManager.Instance.mainTilemap.GetTile(tilemapPos) != null;
+    }
+
+    bool IsOtherPlayerGoal(Vector2Int gridPos)
+    {
+        if (LevelManager.Instance?.currentLevelData?.players == null) return false;
+
+        foreach (var playerData in LevelManager.Instance.currentLevelData.players)
+        {
+            if (playerData.playerID != selectedPlayer.playerID &&
+                playerData.goalPosition == gridPos)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool CanAddMorePoints()
+    {
+        int maxSelections = GameManager.Instance.GetMaxSelections();
+        return currentPath.Count < maxSelections + 1;
+    }
+
+    bool IsStraightLine(Vector2Int from, Vector2Int to)
+    {
+        Vector2Int diff = to - from;
+        return (diff.x == 0 && diff.y != 0) || (diff.y == 0 && diff.x != 0);
+    }
+
+
+    bool IsAnyPlayerMoving()
+    {
+        Player[] allPlayers = FindObjectsByType<Player>(FindObjectsSortMode.None);
+        foreach (Player player in allPlayers)
+        {
+            if (player.IsMoving()) return true;
+        }
+        return false;
+    }
+
+    void StartSimulation()
+    {
+        // 모든 플레이어가 Goal에 도달했는지 확인
+        if (!AreAllPlayersComplete())
+        {
+            return; // 완성되지 않았으면 시뮬레이션 시작하지 않음
+        }
+
+        foreach (var kvp in playerPaths)
+        {
+            Player player = kvp.Key;
+            List<Vector2Int> fullPath = kvp.Value;
+
+            if (fullPath.Count > 1)
+            {
+                List<Vector2Int> playerPath = new List<Vector2Int>(fullPath);
+                playerPath.RemoveAt(0); // 시작점 제거
+
+                player.SetPath(playerPath);
+                player.StartMoving();
+            }
+        }
+    }
+    bool IsOtherPlayerStart(Vector2Int gridPos)
+    {
+        if (LevelManager.Instance?.currentLevelData?.players == null) return false;
+
+        foreach (var playerData in LevelManager.Instance.currentLevelData.players)
+        {
+            if (playerData.playerID != selectedPlayer.playerID &&
+                playerData.startPosition == gridPos)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool CanReachGoalAfterThisSelection(Vector2Int targetPos)
     {
         int maxSelections = GameManager.Instance.GetMaxSelections();
         int usedAfterThis = currentPath.Count + 1; // 이번 선택 포함
         int remainingAfterThis = maxSelections + 1 - usedAfterThis;
 
-        // 마지막 선택이면 Goal 직선 체크 필요
-        if (remainingAfterThis <= 1)
+        Vector2Int ownGoalPos = GetOwnGoalPosition();
+
+        if (remainingAfterThis == 0) // 마지막 선택
         {
-            Vector2Int ownGoalPos = GetOwnGoalPosition();
+            return targetPos == ownGoalPos;
+        }
+
+        if (remainingAfterThis == 1) // 마지막에서 두 번째 선택
+        {
             Vector2Int diff = ownGoalPos - targetPos;
             return (diff.x == 0) || (diff.y == 0); // 직선인지 확인
         }
 
-        return true; // 마지막 선택이 아니면 OK
+        return true; // 그 외 선택은 자유
     }
+    Vector2Int GetOwnGoalPosition()
+    {
+        if (LevelManager.Instance?.currentLevelData?.players == null) return Vector2Int.zero;
+
+        foreach (var playerData in LevelManager.Instance.currentLevelData.players)
+        {
+            if (playerData.playerID == selectedPlayer.playerID)
+            {
+                return playerData.goalPosition;
+            }
+        }
+        return Vector2Int.zero;
+    }
+    bool IsPathCompleteToGoal()
+    {
+        if (currentPath.Count == 0) return false;
+
+        Vector2Int lastPoint = currentPath[currentPath.Count - 1];
+        return IsPlayerOwnGoal(lastPoint);
+    }
+
+    bool IsPlayerOwnGoal(Vector2Int gridPos)
+    {
+        if (LevelManager.Instance?.currentLevelData?.players == null) return false;
+
+        foreach (var playerData in LevelManager.Instance.currentLevelData.players)
+        {
+            if (playerData.playerID == selectedPlayer.playerID &&
+                playerData.goalPosition == gridPos)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool AreAllPlayersComplete()
+    {
+        if (LevelManager.Instance?.currentLevelData?.players == null) return false;
+
+        // 레벨의 모든 플레이어 확인
+        foreach (var playerData in LevelManager.Instance.currentLevelData.players)
+        {
+            // 해당 플레이어 오브젝트 찾기
+            Player playerObj = null;
+            foreach (var kvp in playerPaths)
+            {
+                if (kvp.Key.playerID == playerData.playerID)
+                {
+                    playerObj = kvp.Key;
+                    break;
+                }
+            }
+
+            if (playerObj == null) return false;
+
+            // 이 플레이어의 경로가 Goal까지 완성되었는지 확인
+            List<Vector2Int> path = playerPaths[playerObj];
+            if (path.Count == 0) return false;
+
+            Vector2Int lastPoint = path[path.Count - 1];
+            if (lastPoint != playerData.goalPosition) return false;
+        }
+
+        return true; // 모든 플레이어가 Goal까지 완성됨
+    }
+    void CompletePlayerPath()
+    {
+        if (!playerPathRenderers.ContainsKey(selectedPlayer)) return;
+
+        LineRenderer pathRenderer = playerPathRenderers[selectedPlayer];
+
+        // 완료된 경로 색상을 검은색으로 변경
+        pathRenderer.startColor = Color.black;
+        pathRenderer.endColor = Color.black;
+
+        // 2초 후 숨기기
+        StartCoroutine(HidePathAfterDelay(pathRenderer, 1.0f));
+    }
+
+    System.Collections.IEnumerator HidePathAfterDelay(LineRenderer pathRenderer, float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        pathRenderer.positionCount = 0;
+    }
+}
+using UnityEngine;
+
+public enum TileType
+{
+    Walkable,    // 이동 가능
+    Blocked,     // 막힌 타일
+    Start,       // 시작점
+    Goal         // 목적지
+}
+
+[CreateAssetMenu(fileName = "New Tile Data", menuName = "PathPath/Tile Data")]
+public class TileData : ScriptableObject
+{
+    [Header("Tile Settings")]
+    public TileType tileType;
+    public string tileName;
+    public Sprite tileSprite;
+    public Color tileColor = Color.white;
+
+    [Header("Gameplay Properties")]
+    public bool isWalkable = true;
+    public bool blocksMovement = false;
+
+    [Header("Visual")]
+    public Material tileMaterial;
+
+    public bool CanWalkOn()
+    {
+        return isWalkable && !blocksMovement;
+    }
+}using UnityEngine;
+using System.Collections.Generic;
+
+public class Player : MonoBehaviour
+{
+    [Header("Player Settings")]
+    public int playerID = 1;
+    public Color playerColor = Color.red;
+
+    [Header("Movement")]
+    public float moveSpeed = 2f;
+
+    private Vector2Int currentGridPos;
+    private Vector2Int targetGridPos;
+    private List<Vector2Int> plannedPath = new List<Vector2Int>();
+    private bool isMoving = false;
+
+    void Start()
+    {
+        // 현재 월드 위치를 그리드 좌표로 변환
+        currentGridPos = GridManager.Instance.WorldToGrid(transform.position);
+        targetGridPos = currentGridPos;
+
+        // 정확한 그리드 위치로 스냅
+        transform.position = GridManager.Instance.GridToWorld(currentGridPos);
+
+        // 플레이어 색상 설정
+        GetComponent<SpriteRenderer>().color = playerColor;
+    }
+
+    void Update()
+    {
+        if (isMoving)
+        {
+            Vector3 targetWorldPos = GridManager.Instance.GridToWorld(targetGridPos);
+            transform.position = Vector3.MoveTowards(transform.position, targetWorldPos, moveSpeed * Time.deltaTime);
+
+            // 도착 확인
+            if ((transform.position - targetWorldPos).sqrMagnitude < 0.0001f)
+            {
+                transform.position = targetWorldPos;
+                currentGridPos = targetGridPos;
+                isMoving = false;
+
+                // 다음 경로가 있으면 계속 이동
+                if (plannedPath.Count > 0)
+                {
+                    MoveToNextPosition();
+                }
+            }
+        }
+    }
+
+    public void SetPath(List<Vector2Int> path)
+    {
+        plannedPath = new List<Vector2Int>(path);
+    }
+
+    public void StartMoving()
+    {
+        if (plannedPath.Count > 0 && !isMoving)
+        {
+            MoveToNextPosition();
+        }
+    }
+
+    private void MoveToNextPosition()
+    {
+        if (plannedPath.Count > 0)
+        {
+            targetGridPos = plannedPath[0];
+            plannedPath.RemoveAt(0);
+            isMoving = true;
+        }
+    }
+
+    public Vector2Int GetGridPosition()
+    {
+        return currentGridPos;
+    }
+
+    public bool IsMoving()
+    {
+        return isMoving;
+    }
+
+    public void ClearPath()
+    {
+        plannedPath.Clear();
+        isMoving = false;
+    }
+}using UnityEngine;
+
+public class GridManager : MonoBehaviour
+{
+    [Header("Grid Settings")]
+    public int gridWidth = 6;
+    public int gridHeight = 12;
+    public float cellSize = 1f;
+    public Vector3 gridCenter = new Vector3(2.5f, 5.5f, 0f);
+
+    private static GridManager instance;
+    public static GridManager Instance { get { return instance; } }
+
+    void Awake()
+    {
+        if (instance == null)
+        {
+            instance = this;
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
+    }
+
+    // 월드 좌표를 그리드 좌표로 변환
+    public Vector2Int WorldToGrid(Vector3 worldPos)
+    {
+        Vector3 gridPos = worldPos - gridCenter + new Vector3(gridWidth * cellSize / 2f, gridHeight * cellSize / 2f, 0f);
+        int x = Mathf.FloorToInt(gridPos.x / cellSize);
+        int y = Mathf.FloorToInt(gridPos.y / cellSize);
+        return new Vector2Int(x, y);
+    }
+
+    // 그리드 좌표를 월드 좌표로 변환
+    public Vector3 GridToWorld(Vector2Int gridPos)
+    {
+        float x = gridCenter.x - (gridWidth * cellSize / 2f) + (gridPos.x + 0.5f) * cellSize;
+        float y = gridCenter.y - (gridHeight * cellSize / 2f) + (gridPos.y + 0.5f) * cellSize;
+        return new Vector3(x, y, 0f);
+    }
+
+    // 그리드 범위 내인지 확인
+    public bool IsValidGridPosition(Vector2Int gridPos)
+    {
+        return gridPos.x >= 0 && gridPos.x < gridWidth &&
+               gridPos.y >= 0 && gridPos.y < gridHeight;
+    }
+
+    // 디버그용 그리드 그리기
+#if UNITY_EDITOR
+    void OnDrawGizmos()
+    {
+        // 선택된 상태에서만 그리기
+        if (UnityEditor.Selection.activeGameObject == gameObject)
+        {
+            Gizmos.color = Color.green;
+            Vector3 gridStartPos = gridCenter - new Vector3(gridWidth * cellSize / 2f, gridHeight * cellSize / 2f, 0f);
+
+            // 세로 선들
+            for (int x = 0; x <= gridWidth; x++)
+            {
+                Vector3 lineStart = gridStartPos + new Vector3(x * cellSize, 0, 0);
+                Vector3 lineEnd = lineStart + new Vector3(0, gridHeight * cellSize, 0);
+                Gizmos.DrawLine(lineStart, lineEnd);
+            }
+
+            // 가로 선들  
+            for (int y = 0; y <= gridHeight; y++)
+            {
+                Vector3 lineStart = gridStartPos + new Vector3(0, y * cellSize, 0);
+                Vector3 lineEnd = lineStart + new Vector3(gridWidth * cellSize, 0, 0);
+                Gizmos.DrawLine(lineStart, lineEnd);
+            }
+        }
+    }
+#endif
+}using UnityEngine;
+
+public class GameManager : MonoBehaviour
+{
+    [Header("Game Settings")]
+    public int maxSelectionsPerPlayer = 3;
+    public int currentLevel = 1;
+
+    [Header("Managers")]
+    [SerializeField] private GridManager gridManager;
+
+    // 싱글톤 패턴
+    private static GameManager instance;
+    public static GameManager Instance { get { return instance; } }
+
+    void Awake()
+    {
+        // 싱글톤 설정
+        if (instance == null)
+        {
+            instance = this;
+            transform.SetParent(null); // Root로 이동
+            DontDestroyOnLoad(gameObject);
+            InitializeGame();
+        }
+        else
+        {
+            Destroy(gameObject);
+        }
+    }
+
+    void InitializeGame()
+    {
+        // GridManager 자동 찾기
+        if (gridManager == null)
+            gridManager = FindFirstObjectByType<GridManager>();
+    }
+
+    // 레벨별 선택 수 반환
+    public int GetMaxSelections()
+    {
+        return maxSelectionsPerPlayer;
+    }
+
+    // 레벨 완료 처리
+    public void CompleteLevel()
+    {
+        // TODO: 다음 레벨 로딩, 별점 계산 등
+    }
+
+    // 레벨 실패 처리
+    public void FailLevel()
+    {
+        // TODO: 재시작 UI 표시
+    }
+
+    // 게임 재시작
+    public void RestartLevel()
+    {
+        // TODO: 레벨 리셋
+    }
+}
