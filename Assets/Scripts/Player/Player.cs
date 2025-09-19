@@ -27,7 +27,18 @@ public class Player : MonoBehaviour
         // 플레이어 색상 설정
         GetComponent<SpriteRenderer>().color = playerColor;
     }
+    public void ForceStop()
+    {
+        plannedPath.Clear();
+        isMoving = false;
 
+        // 현재 transform.position을 그대로 유지 (스냅하지 않음)
+        // 단순히 이동만 중지하고 현재 위치에서 멈춤
+        currentGridPos = GridManager.Instance.WorldToGrid(transform.position);
+        targetGridPos = currentGridPos;
+
+        // transform.position은 건드리지 않아서 자연스럽게 현재 위치에서 멈춤
+    }
     void Update()
     {
         if (isMoving)
@@ -76,7 +87,8 @@ public class Player : MonoBehaviour
 
     public Vector2Int GetGridPosition()
     {
-        return currentGridPos;
+        // 실제 현재 위치를 Grid 좌표로 변환
+        return GridManager.Instance.WorldToGrid(transform.position);
     }
 
     public bool IsMoving()

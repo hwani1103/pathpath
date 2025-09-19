@@ -17,6 +17,26 @@ public class LevelManager : MonoBehaviour
     public Tilemap mainTilemap;
     public TilemapRenderer tilemapRenderer;
 
+    [Header("Tile Mapping")]
+    [SerializeField] private TileBase walkableTileAsset;
+    [SerializeField] private TileBase blockedTileAsset;
+    [SerializeField] private TileBase startTileAsset;
+    [SerializeField] private TileBase goalTileAsset;
+
+    [Header("Level Generation Settings")]
+    [SerializeField] private int numberOfPlayers = 2;
+    [SerializeField] private PlayerEditorData[] playerSettings = new PlayerEditorData[2];
+
+    [System.Serializable]
+    public class PlayerEditorData
+    {
+        public Color playerColor = Color.red;
+        public Vector2Int startPosition = Vector2Int.zero;
+        public Vector2Int goalPosition = Vector2Int.zero;
+        public int maxSelections = 3;
+    }
+
+
     private Dictionary<TileType, TileBase> tileAssets = new Dictionary<TileType, TileBase>();
 
     // 싱글톤 패턴
@@ -34,19 +54,7 @@ public class LevelManager : MonoBehaviour
             Destroy(gameObject);
         }
     }
-
-    // 나중에 Level 디자인할 때, 우클릭으로 Grid좌표확인하면서 Player랑 Goal위치 지정하게하는 메서드
-    //void Update()
-    //{
-    //    // 우클릭으로 Grid 좌표 확인
-    //    if (Input.GetMouseButtonDown(1))
-    //    {
-    //        Vector3 mouseWorldPos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
-    //        mouseWorldPos.z = 0;
-    //        Vector2Int gridPos = GridManager.Instance.WorldToGrid(mouseWorldPos);
-    //        Debug.Log($"Mouse Grid Position: {gridPos}");
-    //    }
-    //}
+    
     void Start()
     {
         InitializeTileAssets();
@@ -59,18 +67,11 @@ public class LevelManager : MonoBehaviour
 
     void InitializeTileAssets()
     {
-        // TileData를 실제 TileAsset으로 변환하는 작업
-        // 지금은 임시로 기존 타일들 사용
-        var walkableTiles = Resources.FindObjectsOfTypeAll<TileBase>();
-
-        // 임시 구현: 첫 번째 타일을 각 타입으로 지정
-        if (walkableTiles.Length > 0)
-        {
-            tileAssets[TileType.Walkable] = walkableTiles[0];
-            tileAssets[TileType.Blocked] = walkableTiles[0];
-            tileAssets[TileType.Start] = walkableTiles[0];
-            tileAssets[TileType.Goal] = walkableTiles[0];
-        }
+        // Tile Mapping에서 설정한 에셋들을 그대로 사용
+        tileAssets[TileType.Walkable] = walkableTileAsset;
+        tileAssets[TileType.Blocked] = blockedTileAsset;
+        tileAssets[TileType.Start] = startTileAsset;
+        tileAssets[TileType.Goal] = goalTileAsset;
     }
 
     public void LoadLevel(LevelData levelData)
@@ -173,27 +174,42 @@ public class LevelManager : MonoBehaviour
             Debug.LogError("Main Tilemap is not assigned!");
             return null;
         }
+
         List<TileMapData> tileDataList = new List<TileMapData>();
-        // Tilemap 스캔
         BoundsInt bounds = mainTilemap.cellBounds;
+
         for (int x = bounds.xMin; x < bounds.xMax; x++)
         {
             for (int y = bounds.yMin; y < bounds.yMax; y++)
             {
                 Vector3Int cellPos = new Vector3Int(x, y, 0);
                 TileBase tile = mainTilemap.GetTile(cellPos);
+
                 if (tile != null)
                 {
                     TileMapData tileData = new TileMapData();
                     tileData.position = new Vector2Int(x, y);
-                    tileData.tileType = TileType.Walkable; // 단순화
+                    tileData.tileType = GetTileTypeFromAsset(tile);
                     tileData.playerID = -1;
                     tileDataList.Add(tileData);
                 }
             }
         }
+
         Debug.Log($"Generated {tileDataList.Count} tiles from Tilemap");
         return CreateLevelDataAsset(levelName, tileDataList);
+    }
+
+    private TileType GetTileTypeFromAsset(TileBase tileAsset)
+    {
+        // Inspector에서 설정한 매핑 테이블과 비교
+        if (tileAsset == walkableTileAsset) return TileType.Walkable;
+        if (tileAsset == blockedTileAsset) return TileType.Blocked;
+        if (tileAsset == startTileAsset) return TileType.Start;
+        if (tileAsset == goalTileAsset) return TileType.Goal;
+
+        // 기본값은 Walkable
+        return TileType.Walkable;
     }
 
     // LevelData ScriptableObject 생성
@@ -218,26 +234,20 @@ public class LevelManager : MonoBehaviour
         // 타일 데이터 설정
         newLevelData.tileMap = tiles.ToArray();
 
-        // 기본 플레이어 데이터 (수동으로 설정 필요)
-        newLevelData.players = new PlayerSpawnData[]
+        // Inspector에서 설정한 플레이어 데이터 사용
+        PlayerSpawnData[] spawnDataArray = new PlayerSpawnData[numberOfPlayers];
+        for (int i = 0; i < numberOfPlayers && i < playerSettings.Length; i++)
         {
-            new PlayerSpawnData
+            spawnDataArray[i] = new PlayerSpawnData
             {
-                playerID = 1,
-                startPosition = new Vector2Int(2, 2),
-                goalPosition = new Vector2Int(2, 8),
-                playerColor = Color.red,
-                maxSelections = 3
-            },
-            new PlayerSpawnData
-            {
-                playerID = 2,
-                startPosition = new Vector2Int(4, 2),
-                goalPosition = new Vector2Int(4, 8),
-                playerColor = Color.blue,
-                maxSelections = 3
-            }
-        };
+                playerID = i + 1,
+                startPosition = playerSettings[i].startPosition,
+                goalPosition = playerSettings[i].goalPosition,
+                playerColor = playerSettings[i].playerColor,
+                maxSelections = playerSettings[i].maxSelections
+            };
+        }
+        newLevelData.players = spawnDataArray;
 
         return newLevelData;
     }

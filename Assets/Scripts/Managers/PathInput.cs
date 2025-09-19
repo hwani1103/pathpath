@@ -546,12 +546,15 @@ public class PathInput : MonoBehaviour
             if (fullPath.Count > 1)
             {
                 List<Vector2Int> playerPath = new List<Vector2Int>(fullPath);
-                playerPath.RemoveAt(0); // 시작점 제거
+                playerPath.RemoveAt(0);
 
                 player.SetPath(playerPath);
                 player.StartMoving();
             }
         }
+
+        // 실행 후 경로 데이터 정리
+        playerPaths.Clear();
     }
     public bool AreAllPlayersComplete()
     {

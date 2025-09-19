@@ -47,30 +47,43 @@ public class GridManager : MonoBehaviour
                gridPos.y >= 0 && gridPos.y < gridHeight;
     }
 
-    // 디버그용 그리드 그리기
 #if UNITY_EDITOR
     void OnDrawGizmos()
     {
-        // 선택된 상태에서만 그리기
-        if (UnityEditor.Selection.activeGameObject == gameObject)
+        // 항상 좌표 표시 (선택 여부와 관계없이)
+        if (Application.isPlaying) return; // Play 모드에서는 숨김
+
+        Gizmos.color = Color.yellow;
+        Vector3 gridStartPos = gridCenter - new Vector3(gridWidth * cellSize / 2f, gridHeight * cellSize / 2f, 0f);
+
+        // 격자 그리기
+        for (int x = 0; x <= gridWidth; x++)
         {
-            Gizmos.color = Color.green;
-            Vector3 gridStartPos = gridCenter - new Vector3(gridWidth * cellSize / 2f, gridHeight * cellSize / 2f, 0f);
+            Vector3 lineStart = gridStartPos + new Vector3(x * cellSize, 0, 0);
+            Vector3 lineEnd = lineStart + new Vector3(0, gridHeight * cellSize, 0);
+            Gizmos.DrawLine(lineStart, lineEnd);
+        }
 
-            // 세로 선들
-            for (int x = 0; x <= gridWidth; x++)
-            {
-                Vector3 lineStart = gridStartPos + new Vector3(x * cellSize, 0, 0);
-                Vector3 lineEnd = lineStart + new Vector3(0, gridHeight * cellSize, 0);
-                Gizmos.DrawLine(lineStart, lineEnd);
-            }
+        for (int y = 0; y <= gridHeight; y++)
+        {
+            Vector3 lineStart = gridStartPos + new Vector3(0, y * cellSize, 0);
+            Vector3 lineEnd = lineStart + new Vector3(gridWidth * cellSize, 0, 0);
+            Gizmos.DrawLine(lineStart, lineEnd);
+        }
 
-            // 가로 선들  
-            for (int y = 0; y <= gridHeight; y++)
+        // 좌표 텍스트 표시
+        UnityEditor.Handles.color = Color.white;
+        for (int x = 0; x < gridWidth; x++)
+        {
+            for (int y = 0; y < gridHeight; y++)
             {
-                Vector3 lineStart = gridStartPos + new Vector3(0, y * cellSize, 0);
-                Vector3 lineEnd = lineStart + new Vector3(gridWidth * cellSize, 0, 0);
-                Gizmos.DrawLine(lineStart, lineEnd);
+                Vector3 cellCenter = gridStartPos + new Vector3((x + 0.5f) * cellSize, (y + 0.5f) * cellSize, 0);
+                UnityEditor.Handles.Label(cellCenter, $"({x},{y})", new GUIStyle()
+                {
+                    normal = { textColor = Color.white },
+                    fontSize = 10,
+                    alignment = TextAnchor.MiddleCenter
+                });
             }
         }
     }

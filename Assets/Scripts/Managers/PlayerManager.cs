@@ -63,6 +63,16 @@ public class PlayerManager : MonoBehaviour
 
         allGoals.Add(goalObj);
     }
+    public void StopAllPlayers()
+    {
+        foreach (var player in allPlayers)
+        {
+            if (player != null)
+            {
+                player.ForceStop();
+            }
+        }
+    }
     public PlayerSpawnData GetPlayerData(int playerID)
     {
         if (LevelManager.Instance?.currentLevelData?.players == null) return null;

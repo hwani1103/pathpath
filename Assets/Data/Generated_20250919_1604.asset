@@ -10,10 +10,10 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 2c9c998335cd2cb48b06bf06213191ba, type: 3}
-  m_Name: Generated_20250918_2041
+  m_Name: Generated_20250919_1604
   m_EditorClassIdentifier: 
   levelID: 0
-  levelName: Generated_20250918_2041
+  levelName: Generated_20250919_1604
   difficulty: 1
   gridWidth: 7
   gridHeight: 12
@@ -23,11 +23,11 @@ MonoBehaviour:
     startPosition: {x: 2, y: 0}
     goalPosition: {x: 4, y: 11}
     playerColor: {r: 1, g: 0, b: 0, a: 1}
-    maxSelections: 3
+    maxSelections: 5
   - playerID: 2
     startPosition: {x: 6, y: 4}
     goalPosition: {x: 0, y: 7}
-    playerColor: {r: 0, g: 0, b: 1, a: 1}
+    playerColor: {r: 0, g: 0.060156107, b: 1, a: 1}
     maxSelections: 3
   tileMap:
   - position: {x: -1, y: 3}
@@ -40,7 +40,7 @@ MonoBehaviour:
     tileType: 0
     playerID: -1
   - position: {x: -1, y: 6}
-    tileType: 0
+    tileType: 3
     playerID: -1
   - position: {x: 0, y: 3}
     tileType: 0
@@ -55,7 +55,7 @@ MonoBehaviour:
     tileType: 0
     playerID: -1
   - position: {x: 1, y: -1}
-    tileType: 0
+    tileType: 2
     playerID: -1
   - position: {x: 1, y: 0}
     tileType: 0
@@ -160,7 +160,7 @@ MonoBehaviour:
     tileType: 0
     playerID: -1
   - position: {x: 3, y: 10}
-    tileType: 0
+    tileType: 3
     playerID: -1
   - position: {x: 4, y: 3}
     tileType: 0
@@ -175,7 +175,7 @@ MonoBehaviour:
     tileType: 0
     playerID: -1
   - position: {x: 5, y: 3}
-    tileType: 0
+    tileType: 2
     playerID: -1
   - position: {x: 5, y: 4}
     tileType: 0
