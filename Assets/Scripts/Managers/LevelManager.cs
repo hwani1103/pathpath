@@ -7,21 +7,13 @@ public class LevelManager : MonoBehaviour
     [Header("Current Level")]
     public LevelData currentLevelData;
 
-    [Header("Tile References")]
-    public TileData walkableTileData;
-    public TileData blockedTileData;
-    public TileData startTileData;
-    public TileData goalTileData;
-
     [Header("Tilemap References")]
     public Tilemap mainTilemap;
     public TilemapRenderer tilemapRenderer;
 
     [Header("Tile Mapping")]
-    [SerializeField] private TileBase walkableTileAsset;
+    [SerializeField] private TileBase walkableTileAsset;  // 이 줄 추가
     [SerializeField] private TileBase blockedTileAsset;
-    [SerializeField] private TileBase startTileAsset;
-    [SerializeField] private TileBase goalTileAsset;
 
     [Header("Level Generation Settings")]
     [SerializeField] private int numberOfPlayers = 2;
@@ -54,24 +46,18 @@ public class LevelManager : MonoBehaviour
             Destroy(gameObject);
         }
     }
-    
+
     void Start()
     {
         InitializeTileAssets();
-
-        if (currentLevelData != null)
-        {
-            LoadLevel(currentLevelData);
-        }
+        // currentLevelData 직접 로딩 제거
+        // GameManager가 레벨을 관리하도록 위임
     }
 
     void InitializeTileAssets()
     {
-        // Tile Mapping에서 설정한 에셋들을 그대로 사용
-        tileAssets[TileType.Walkable] = walkableTileAsset;
+        tileAssets[TileType.Walkable] = walkableTileAsset;  // 이 줄 추가
         tileAssets[TileType.Blocked] = blockedTileAsset;
-        tileAssets[TileType.Start] = startTileAsset;
-        tileAssets[TileType.Goal] = goalTileAsset;
     }
 
     public void LoadLevel(LevelData levelData)
@@ -101,10 +87,13 @@ public class LevelManager : MonoBehaviour
 
     void ClearLevel()
     {
-        // 기존 타일맵 클리어
-        if (mainTilemap != null)
+        // 첫 번째 레벨이 아닐 때만 타일맵 클리어
+        if (GameManager.Instance != null && GameManager.Instance.currentLevel > 1)
         {
-            mainTilemap.SetTilesBlock(mainTilemap.cellBounds, new TileBase[mainTilemap.cellBounds.size.x * mainTilemap.cellBounds.size.y * mainTilemap.cellBounds.size.z]);
+            if (mainTilemap != null)
+            {
+                mainTilemap.SetTilesBlock(mainTilemap.cellBounds, new TileBase[mainTilemap.cellBounds.size.x * mainTilemap.cellBounds.size.y * mainTilemap.cellBounds.size.z]);
+            }
         }
 
         // PathInput LineRenderer 정리
@@ -114,7 +103,7 @@ public class LevelManager : MonoBehaviour
             pathInput.ClearAllLineRenderers();
         }
 
-        // PlayerManager로 플레이어/목표 정리 (기존 코드 교체)
+        // PlayerManager로 플레이어/목표 정리
         PlayerManager.Instance.ClearAllPlayers();
     }
 
@@ -202,14 +191,9 @@ public class LevelManager : MonoBehaviour
 
     private TileType GetTileTypeFromAsset(TileBase tileAsset)
     {
-        // Inspector에서 설정한 매핑 테이블과 비교
-        if (tileAsset == walkableTileAsset) return TileType.Walkable;
         if (tileAsset == blockedTileAsset) return TileType.Blocked;
-        if (tileAsset == startTileAsset) return TileType.Start;
-        if (tileAsset == goalTileAsset) return TileType.Goal;
 
-        // 기본값은 Walkable
-        return TileType.Walkable;
+        return TileType.Walkable; // 나머지는 모두 Walkable
     }
 
     // LevelData ScriptableObject 생성

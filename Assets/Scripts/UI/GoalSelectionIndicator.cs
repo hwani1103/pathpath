@@ -51,6 +51,10 @@ public class GoalSelectionIndicator : MonoBehaviour
     }
     void FindAllGoalObjects()
     {
+        // 기존 참조들 완전히 정리
+        playerGoalObjects.Clear();
+        originalGoalScales.Clear();
+
         if (PlayerManager.Instance != null && LevelManager.Instance?.currentLevelData?.players != null)
         {
             List<GameObject> allGoals = PlayerManager.Instance.GetAllGoals();
@@ -58,10 +62,14 @@ public class GoalSelectionIndicator : MonoBehaviour
             for (int i = 0; i < allGoals.Count && i < LevelManager.Instance.currentLevelData.players.Length; i++)
             {
                 GameObject goalObj = allGoals[i];
-                var playerData = LevelManager.Instance.currentLevelData.players[i];
 
-                playerGoalObjects[playerData.playerID] = goalObj;
-                originalGoalScales[goalObj] = goalObj.transform.localScale;
+                // null 체크 추가
+                if (goalObj != null)
+                {
+                    var playerData = LevelManager.Instance.currentLevelData.players[i];
+                    playerGoalObjects[playerData.playerID] = goalObj;
+                    originalGoalScales[goalObj] = goalObj.transform.localScale;
+                }
             }
         }
     }

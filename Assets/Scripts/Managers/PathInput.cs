@@ -251,4 +251,14 @@ public class PathInput : MonoBehaviour
     {
         pathManager.AddPlayerToCache(player);
     }
+    public void ResetAllPaths()
+    {
+        selectedPlayer = null;
+        currentPath.Clear();
+
+        pathManager?.ClearAllPaths();
+        pathVisualizer?.ClearAllLineRenderers();
+
+        OnPlayerSelectionChanged?.Invoke(null);
+    }
 }
